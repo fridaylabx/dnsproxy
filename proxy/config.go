@@ -121,6 +121,9 @@ type Config struct {
 	// requests.
 	HTTPSListenAddr []*net.TCPAddr
 
+	// HTTPListenAddr is the set of TCP addresses to listen for DNS-over-HTTP
+	HTTPListenAddr []*net.TCPAddr
+
 	// TLSListenAddr is the set of TCP addresses to listen for DNS-over-TLS
 	// requests.
 	TLSListenAddr []*net.TCPAddr
@@ -402,6 +405,7 @@ func (p *Proxy) hasListenAddrs() bool {
 		p.TCPListenAddr != nil ||
 		p.TLSListenAddr != nil ||
 		p.HTTPSListenAddr != nil ||
+		p.HTTPListenAddr != nil ||
 		p.QUICListenAddr != nil ||
 		p.DNSCryptUDPListenAddr != nil ||
 		p.DNSCryptTCPListenAddr != nil

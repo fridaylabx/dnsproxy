@@ -69,6 +69,15 @@ type DNSContext struct {
 	// Addr is the address of the client.
 	Addr netip.AddrPort
 
+	// PreAddr is the address of the client.
+	PreAddr netip.AddrPort
+
+	// XForwardedFor is the X-Forwarded-For header.
+	XForwardedFor string
+
+	// AnswerType is answer RR type. 0 is for dot/doh; 1 is for json answer;
+	AnswerType uint8
+
 	// QueryDuration is the duration of a successful query to an upstream
 	// server or, if the upstream server is unavailable, to a fallback server.
 	QueryDuration time.Duration
@@ -99,6 +108,9 @@ type DNSContext struct {
 
 	// doBit is the DNSSEC OK flag from request's EDNS0 RR if presented.
 	doBit bool
+
+	// hit the cache
+	hit bool
 }
 
 // newDNSContext returns a new properly initialized *DNSContext.

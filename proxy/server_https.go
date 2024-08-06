@@ -25,21 +25,26 @@ import (
 // listenHTTP creates instances of TLS listeners that will be used to run an
 // H1/H2 server.  Returns the address the listener actually listens to (useful
 // in the case if port 0 is specified).
-func (p *Proxy) listenHTTP(addr *net.TCPAddr) (laddr *net.TCPAddr, err error) {
+func (p *Proxy) listenHTTP(addr *net.TCPAddr, isTLS bool) (laddr *net.TCPAddr, err error) {
 	tcpListen, err := net.ListenTCP(bootstrap.NetworkTCP, addr)
 	if err != nil {
 		return nil, fmt.Errorf("tcp listener: %w", err)
 	}
+	if !isTLS {
+		p.logger.Info("listening to http", "addr", tcpListen.Addr())
+		p.httpListen = append(p.httpListen, tcpListen)
+		return tcpListen.Addr().(*net.TCPAddr), nil
+	} else {
+		p.logger.Info("listening to https", "addr", tcpListen.Addr())
 
-	p.logger.Info("listening to https", "addr", tcpListen.Addr())
+		tlsConfig := p.TLSConfig.Clone()
+		tlsConfig.NextProtos = []string{http2.NextProtoTLS, "http/1.1"}
 
-	tlsConfig := p.TLSConfig.Clone()
-	tlsConfig.NextProtos = []string{http2.NextProtoTLS, "http/1.1"}
+		tlsListen := tls.NewListener(tcpListen, tlsConfig)
+		p.httpsListen = append(p.httpsListen, tlsListen)
 
-	tlsListen := tls.NewListener(tcpListen, tlsConfig)
-	p.httpsListen = append(p.httpsListen, tlsListen)
-
-	return tcpListen.Addr().(*net.TCPAddr), nil
+		return tcpListen.Addr().(*net.TCPAddr), nil
+	}
 }
 
 // listenH3 creates instances of QUIC listeners that will be used for running
@@ -76,7 +81,7 @@ func (p *Proxy) createHTTPSListeners() (err error) {
 	for _, addr := range p.HTTPSListenAddr {
 		p.logger.Info("creating an https server")
 
-		tcpAddr, lErr := p.listenHTTP(addr)
+		tcpAddr, lErr := p.listenHTTP(addr, true)
 		if lErr != nil {
 			return fmt.Errorf("failed to start HTTPS server on %s: %w", addr, lErr)
 		}
@@ -89,6 +94,14 @@ func (p *Proxy) createHTTPSListeners() (err error) {
 			if err != nil {
 				return fmt.Errorf("failed to start HTTP/3 server on %s: %w", udpAddr, err)
 			}
+		}
+	}
+
+	for _, addr := range p.HTTPListenAddr {
+		p.logger.Info("creating an http server")
+		_, err = p.listenHTTP(addr, false)
+		if err != nil {
+			return fmt.Errorf("failed to start HTTP server on %s: %w", addr, err)
 		}
 	}
 
@@ -148,6 +161,64 @@ func newDoHReq(r *http.Request, l *slog.Logger) (req *dns.Msg, statusCode int) {
 	return req, http.StatusOK
 }
 
+func newDoHOrHttpReq(r *http.Request, l *slog.Logger) (req *dns.Msg, statusCode int, answerType uint8, remoteHostStr string) {
+	var (
+		buf  []byte
+		err  error
+		path = r.URL.Path
+	)
+	answerType = HttpDnsAnswerTypeDoh
+	switch r.Method {
+	case http.MethodGet:
+		if path == HttpDnsUrlPathPrefix || path == HttpDnsUrlPathPrefixBak {
+			answerType = HttpDnsAnswerTypeJsonAnswer
+			buf, remoteHostStr, err = parseHTTPArgs(r.URL.Query())
+		} else {
+			dnsParam := r.URL.Query().Get("dns")
+			buf, err = base64.RawURLEncoding.DecodeString(dnsParam)
+		}
+		if len(buf) == 0 || err != nil {
+			l.Debug(
+				"parsing dns request from http get param",
+				"param_name", r.URL.Query().Encode(),
+				slogutil.KeyError, err,
+			)
+
+			return nil, http.StatusBadRequest, answerType, remoteHostStr
+		}
+	case http.MethodPost:
+		contentType := r.Header.Get(httphdr.ContentType)
+		if contentType != "application/dns-message" {
+			l.Debug("unsupported media type", "content_type", contentType)
+
+			return nil, http.StatusUnsupportedMediaType, answerType, remoteHostStr
+		}
+
+		// TODO(d.kolyshev): Limit reader.
+		buf, err = io.ReadAll(r.Body)
+		if err != nil {
+			l.Debug("reading http request body", slogutil.KeyError, err)
+
+			return nil, http.StatusBadRequest, answerType, remoteHostStr
+		}
+
+		defer slogutil.CloseAndLog(context.TODO(), l, r.Body, slog.LevelDebug)
+	default:
+		l.Debug("bad http method", "method", r.Method)
+
+		return nil, http.StatusMethodNotAllowed, answerType, remoteHostStr
+	}
+
+	req = &dns.Msg{}
+	if err = req.Unpack(buf); err != nil {
+		l.Debug("unpacking http msg", slogutil.KeyError, err)
+
+		return nil, http.StatusBadRequest, answerType, remoteHostStr
+	}
+
+	return req, http.StatusOK, answerType, remoteHostStr
+}
+
 // ServeHTTP is the http.Handler implementation that handles DoH queries.
 //
 // Here is what it returns:
@@ -159,19 +230,19 @@ func newDoHReq(r *http.Request, l *slog.Logger) (req *dns.Msg, statusCode int) {
 func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	p.logger.Debug("incoming https request", "url", r.URL)
 
-	raddr, prx, err := remoteAddr(r, p.logger)
+	req, statusCode, answerType, remoteHostStr := newDoHOrHttpReq(r, p.logger)
+	if req == nil {
+		http.Error(w, http.StatusText(statusCode), statusCode)
+
+		return
+	}
+
+	raddr, prx, err := remoteAddrWithRemoteHost(r, remoteHostStr, p.logger)
 	if err != nil {
 		p.logger.Debug("getting real ip", slogutil.KeyError, err)
 	}
 
 	if !p.checkBasicAuth(w, r, raddr) {
-		return
-	}
-
-	req, statusCode := newDoHReq(r, p.logger)
-	if req == nil {
-		http.Error(w, http.StatusText(statusCode), statusCode)
-
 		return
 	}
 
@@ -189,9 +260,19 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	d := p.newDNSContext(ProtoHTTPS, req, raddr)
+	proto := ProtoHTTP
+	if strings.ToLower(r.URL.Scheme) == "https" {
+		proto = ProtoHTTPS
+	}
+	d := p.newDNSContext(proto, req, raddr)
 	d.HTTPRequest = r
 	d.HTTPResponseWriter = w
+	d.PreAddr = raddr
+	d.AnswerType = answerType
+	if prx.IsValid() {
+		d.PreAddr = prx
+	}
+	d.XForwardedFor = r.Header.Get("X-Forwarded-For")
 
 	err = p.handleDNSRequest(d)
 	if err != nil {
@@ -246,7 +327,13 @@ func (p *Proxy) respondHTTPS(d *DNSContext) (err error) {
 		return nil
 	}
 
-	bytes, err := resp.Pack()
+	var bytes []byte
+	if d.Proto == ProtoHTTP {
+		bytes, err = formatHTTPDNSMsg(resp, d.AnswerType)
+	} else {
+		bytes, err = resp.Pack()
+	}
+
 	if err != nil {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 
@@ -257,7 +344,11 @@ func (p *Proxy) respondHTTPS(d *DNSContext) (err error) {
 		w.Header().Set(httphdr.Server, srvName)
 	}
 
-	w.Header().Set(httphdr.ContentType, "application/dns-message")
+	if d.AnswerType == HttpDnsAnswerTypeDoh {
+		w.Header().Set(httphdr.ContentType, "application/dns-message")
+	} else {
+		w.Header().Set(httphdr.ContentType, "application/json")
+	}
 	_, err = w.Write(bytes)
 
 	return err
@@ -298,6 +389,34 @@ func remoteAddr(r *http.Request, l *slog.Logger) (addr, prx netip.AddrPort, err 
 	host, err := netip.ParseAddrPort(r.RemoteAddr)
 	if err != nil {
 		return netip.AddrPort{}, netip.AddrPort{}, err
+	}
+
+	realIP, err := realIPFromHdrs(r)
+	if err != nil {
+		l.Debug("getting ip address from http request", slogutil.KeyError, err)
+
+		return host, netip.AddrPort{}, nil
+	}
+
+	l.Debug("using ip address from http request", "addr", realIP)
+
+	// TODO(a.garipov): Add port if we can get it from headers like X-Real-Port,
+	// X-Forwarded-Port, etc.
+	addr = netip.AddrPortFrom(realIP, 0)
+
+	return addr, host, nil
+}
+
+func remoteAddrWithRemoteHost(r *http.Request, remoteHostStr string, l *slog.Logger) (addr, prx netip.AddrPort, err error) {
+	host, err := netip.ParseAddrPort(r.RemoteAddr)
+	if err != nil {
+		return netip.AddrPort{}, netip.AddrPort{}, err
+	}
+	if remoteHostStr != "" {
+		newHost, err := netip.ParseAddrPort(remoteHostStr)
+		if err == nil {
+			host = newHost
+		}
 	}
 
 	realIP, err := realIPFromHdrs(r)

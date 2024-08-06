@@ -48,6 +48,8 @@ const (
 	ProtoTCP Proto = "tcp"
 	// ProtoTLS is the DNS-over-TLS (DoT) protocol.
 	ProtoTLS Proto = "tls"
+	// ProtoHTTP is the DNS-over-HTTP protocol.
+	ProtoHTTP Proto = "http"
 	// ProtoHTTPS is the DNS-over-HTTPS (DoH) protocol.
 	ProtoHTTPS Proto = "https"
 	// ProtoQUIC is the DNS-over-QUIC (DoQ) protocol.
@@ -143,6 +145,9 @@ type Proxy struct {
 
 	// httpsListen are the listened HTTPS connections.
 	httpsListen []net.Listener
+
+	// httpListen are the listened HTTP connections.
+	httpListen []net.Listener
 
 	// h3Listen are the listened HTTP/3 connections.
 	h3Listen []*quic.EarlyListener
@@ -290,8 +295,8 @@ func (p *Proxy) validateBasicAuth() (err error) {
 		return nil
 	}
 
-	if len(conf.HTTPSListenAddr) == 0 {
-		return errors.Error("no https addrs")
+	if len(conf.HTTPSListenAddr) == 0 && len(conf.HTTPListenAddr) == 0 {
+		return errors.Error("no https or http addrs")
 	}
 
 	return nil

@@ -68,6 +68,10 @@ func (p *Proxy) startListeners() {
 		go func(l net.Listener) { _ = p.httpsServer.Serve(l) }(l)
 	}
 
+	for _, l := range p.httpListen {
+		go func(l net.Listener) { _ = p.httpsServer.Serve(l) }(l)
+	}
+
 	for _, l := range p.h3Listen {
 		go func(l *quic.EarlyListener) { _ = p.h3Server.ServeListener(l) }(l)
 	}
@@ -211,7 +215,7 @@ func (p *Proxy) respond(d *DNSContext) {
 		err = p.respondTCP(d)
 	case ProtoTLS:
 		err = p.respondTCP(d)
-	case ProtoHTTPS:
+	case ProtoHTTPS, ProtoHTTP:
 		err = p.respondHTTPS(d)
 	case ProtoQUIC:
 		err = p.respondQUIC(d)

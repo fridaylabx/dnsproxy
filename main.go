@@ -79,6 +79,9 @@ type Options struct {
 	// HTTPSListenPorts are the ports server listens on for DNS-over-HTTPS.
 	HTTPSListenPorts []int `yaml:"https-port" short:"s" long:"https-port" description:"Listening ports for DNS-over-HTTPS"`
 
+	// HTTP listen ports
+	HTTPListenPorts []int `yaml:"http-port" json:"http-port" short:"h" long:"http-port" description:"Listening ports for DNS-over-HTTP"`
+
 	// TLSListenPorts are the ports server listens on for DNS-over-TLS.
 	TLSListenPorts []int `yaml:"tls-port" short:"t" long:"tls-port" description:"Listening ports for DNS-over-TLS"`
 
@@ -708,6 +711,7 @@ func (opts *Options) initListenAddrs(config *proxy.Config) (err error) {
 		}
 	}
 
+	initHTTPListenAddrs(config, opts, addrs)
 	initTLSListenAddrs(config, opts, addrs)
 	initDNSCryptListenAddrs(config, opts, addrs)
 
@@ -734,6 +738,16 @@ func initTLSListenAddrs(config *proxy.Config, options *Options, addrs []netip.Ad
 		for _, port := range options.QUICListenPorts {
 			a := net.UDPAddrFromAddrPort(netip.AddrPortFrom(ip, uint16(port)))
 			config.QUICListenAddr = append(config.QUICListenAddr, a)
+		}
+	}
+}
+
+// initHTTPListenAddrs sets up proxy configuration HTTP listen addresses.
+func initHTTPListenAddrs(config *proxy.Config, options *Options, addrs []netip.Addr) {
+	for _, ip := range addrs {
+		for _, port := range options.HTTPListenPorts {
+			a := net.TCPAddrFromAddrPort(netip.AddrPortFrom(ip, uint16(port)))
+			config.HTTPListenAddr = append(config.HTTPListenAddr, a)
 		}
 	}
 }
