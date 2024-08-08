@@ -455,6 +455,8 @@ func (p *Proxy) Addrs(proto Proto) (addrs []net.Addr) {
 		return collectAddrs(p.tlsListen, net.Listener.Addr)
 	case ProtoHTTPS:
 		return collectAddrs(p.httpsListen, net.Listener.Addr)
+	case ProtoHTTP:
+		return collectAddrs(p.httpListen, net.Listener.Addr)
 	case ProtoUDP:
 		return collectAddrs(p.udpListen, (*net.UDPConn).LocalAddr)
 	case ProtoQUIC:
@@ -496,6 +498,8 @@ func (p *Proxy) Addr(proto Proto) (addr net.Addr) {
 		return firstAddr(p.tlsListen, net.Listener.Addr)
 	case ProtoHTTPS:
 		return firstAddr(p.httpsListen, net.Listener.Addr)
+	case ProtoHTTP:
+		return firstAddr(p.httpListen, net.Listener.Addr)
 	case ProtoUDP:
 		return firstAddr(p.udpListen, (*net.UDPConn).LocalAddr)
 	case ProtoQUIC:

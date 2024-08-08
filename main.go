@@ -77,13 +77,16 @@ type Options struct {
 	ListenPorts []int `yaml:"listen-ports" short:"p" long:"port" description:"Listening ports. Zero value disables TCP and UDP listeners"`
 
 	// HTTPSListenPorts are the ports server listens on for DNS-over-HTTPS.
-	HTTPSListenPorts []int `yaml:"https-port" short:"s" long:"https-port" description:"Listening ports for DNS-over-HTTPS"`
+	HTTPSListenPorts   []int    `yaml:"https-port" short:"s" long:"https-port" description:"Listening ports for DNS-over-HTTPS"`
+	HTTPSListenIPPorts []string `yaml:"https-ip-port" long:"https-ip-port" description:"Listening ports for DNS-over-HTTPS"`
 
 	// HTTP listen ports
-	HTTPListenPorts []int `yaml:"http-port" json:"http-port" short:"h" long:"http-port" description:"Listening ports for DNS-over-HTTP"`
+	HTTPListenPorts   []int    `yaml:"http-port" json:"http-port" short:"h" long:"http-port" description:"Listening ports for DNS-over-HTTP"`
+	HTTPListenIPPorts []string `yaml:"http-ip-port" long:"http-ip-port" description:"Listening ports for DNS-over-HTTPS"`
 
 	// TLSListenPorts are the ports server listens on for DNS-over-TLS.
-	TLSListenPorts []int `yaml:"tls-port" short:"t" long:"tls-port" description:"Listening ports for DNS-over-TLS"`
+	TLSListenPorts   []int    `yaml:"tls-port" short:"t" long:"tls-port" description:"Listening ports for DNS-over-TLS"`
+	TLSListenIPPorts []string `yaml:"tls-ip-port" long:"tls-ip-port" description:"Listening ports for DNS-over-TLS"`
 
 	// QUICListenPorts are the ports server listens on for DNS-over-QUIC.
 	QUICListenPorts []int `yaml:"quic-port" short:"q" long:"quic-port" description:"Listening ports for DNS-over-QUIC"`
@@ -212,58 +215,58 @@ const (
 )
 
 // main is the entry point.
-func main() {
-	opts, exitCode, err := parseOptions()
-	if err != nil {
-		_, _ = fmt.Fprintln(os.Stderr, err)
-	}
-
-	if opts == nil {
-		os.Exit(exitCode)
-	}
-
-	logOutput := os.Stdout
-	if opts.LogOutput != "" {
-		// #nosec G302 -- Trust the file path that is given in the
-		// configuration.
-		logOutput, err = os.OpenFile(opts.LogOutput, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o644)
-		if err != nil {
-			_, _ = fmt.Fprintln(os.Stderr, fmt.Errorf("cannot create a log file: %s", err))
-
-			os.Exit(osutil.ExitCodeArgumentError)
-		}
-
-		defer func() { _ = logOutput.Close() }()
-	}
-
-	l := slogutil.New(&slogutil.Config{
-		Output: logOutput,
-		Format: slogutil.FormatDefault,
-		// TODO(d.kolyshev): Consider making configurable.
-		AddTimestamp: true,
-		Verbose:      opts.Verbose,
-	})
-
-	ctx := context.Background()
-
-	if opts.Pprof {
-		runPprof(l)
-	}
-
-	err = runProxy(ctx, l, opts)
-	if err != nil {
-		l.ErrorContext(ctx, "running dnsproxy", slogutil.KeyError, err)
-
-		// As defers are skipped in case of os.Exit, close logOutput manually.
-		//
-		// TODO(a.garipov): Consider making logger.Close method.
-		if logOutput != os.Stdout {
-			_ = logOutput.Close()
-		}
-
-		os.Exit(osutil.ExitCodeFailure)
-	}
-}
+//func main() {
+//	opts, exitCode, err := parseOptions()
+//	if err != nil {
+//		_, _ = fmt.Fprintln(os.Stderr, err)
+//	}
+//
+//	if opts == nil {
+//		os.Exit(exitCode)
+//	}
+//
+//	logOutput := os.Stdout
+//	if opts.LogOutput != "" {
+//		// #nosec G302 -- Trust the file path that is given in the
+//		// configuration.
+//		logOutput, err = os.OpenFile(opts.LogOutput, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o644)
+//		if err != nil {
+//			_, _ = fmt.Fprintln(os.Stderr, fmt.Errorf("cannot create a log file: %s", err))
+//
+//			os.Exit(osutil.ExitCodeArgumentError)
+//		}
+//
+//		defer func() { _ = logOutput.Close() }()
+//	}
+//
+//	l := slogutil.New(&slogutil.Config{
+//		Output: logOutput,
+//		Format: slogutil.FormatDefault,
+//		// TODO(d.kolyshev): Consider making configurable.
+//		AddTimestamp: true,
+//		Verbose:      opts.Verbose,
+//	})
+//
+//	ctx := context.Background()
+//
+//	if opts.Pprof {
+//		runPprof(l)
+//	}
+//
+//	err = runProxy(ctx, l, opts)
+//	if err != nil {
+//		l.ErrorContext(ctx, "running dnsproxy", slogutil.KeyError, err)
+//
+//		// As defers are skipped in case of os.Exit, close logOutput manually.
+//		//
+//		// TODO(a.garipov): Consider making logger.Close method.
+//		if logOutput != os.Stdout {
+//			_ = logOutput.Close()
+//		}
+//
+//		os.Exit(osutil.ExitCodeFailure)
+//	}
+//}
 
 // parseOptions returns options parsed from the command args or config file.
 // If no options have been parsed returns a suitable exit code and an error.
@@ -710,7 +713,9 @@ func (opts *Options) initListenAddrs(config *proxy.Config) (err error) {
 			config.TCPListenAddr = append(config.TCPListenAddr, net.TCPAddrFromAddrPort(addrPort))
 		}
 	}
-
+	if err := initListenWithAddrAndPort(config, opts); err != nil {
+		return err
+	}
 	initHTTPListenAddrs(config, opts, addrs)
 	initTLSListenAddrs(config, opts, addrs)
 	initDNSCryptListenAddrs(config, opts, addrs)
@@ -750,6 +755,32 @@ func initHTTPListenAddrs(config *proxy.Config, options *Options, addrs []netip.A
 			config.HTTPListenAddr = append(config.HTTPListenAddr, a)
 		}
 	}
+}
+
+func initListenWithAddrAndPort(config *proxy.Config, options *Options) error {
+	for _, ipAndPort := range options.HTTPListenIPPorts {
+		a, err := netip.ParseAddrPort(ipAndPort)
+		if err != nil {
+			return err
+		}
+		config.HTTPListenAddr = append(config.HTTPListenAddr, net.TCPAddrFromAddrPort(a))
+	}
+	for _, ipAndPort := range options.HTTPSListenIPPorts {
+		a, err := netip.ParseAddrPort(ipAndPort)
+		if err != nil {
+			return err
+		}
+		config.HTTPSListenAddr = append(config.HTTPSListenAddr, net.TCPAddrFromAddrPort(a))
+	}
+
+	for _, ipAndPort := range options.TLSListenIPPorts {
+		a, err := netip.ParseAddrPort(ipAndPort)
+		if err != nil {
+			return err
+		}
+		config.TLSListenAddr = append(config.TLSListenAddr, net.TCPAddrFromAddrPort(a))
+	}
+	return nil
 }
 
 // initDNSCryptListenAddrs sets up proxy configuration DNSCrypt listen
