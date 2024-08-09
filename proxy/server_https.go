@@ -413,9 +413,9 @@ func remoteAddrWithRemoteHost(r *http.Request, remoteHostStr string, l *slog.Log
 		return netip.AddrPort{}, netip.AddrPort{}, err
 	}
 	if remoteHostStr != "" {
-		newHost, err := netip.ParseAddrPort(remoteHostStr)
+		newHost, err := netip.ParseAddr(remoteHostStr)
 		if err == nil {
-			host = newHost
+			host = netip.AddrPortFrom(newHost, 0)
 		}
 	}
 

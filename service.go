@@ -32,7 +32,7 @@ func main() {
 	flag.Parse()
 
 	// 获取安装路径
-	installationPath := getCurrentAbPath()
+	installationPath := GetCurrentAbPath()
 
 	serviceConfig := &service.Config{
 		Name:        "Windows-DNS-Proxy-Service",
@@ -146,7 +146,7 @@ func (s *DNSProxyService) Stop(service service.Service) error {
 }
 
 // 获取安装的路径，对于window使用pwd得到的不一定是安装路径，而是C:\Window\System32
-func getCurrentAbPath() string {
+func GetCurrentAbPath() string {
 	dir := getCurrentAbPathByExecutable()
 	tmpDir, _ := filepath.EvalSymlinks(os.TempDir())
 	if tmpDir != "" && strings.Contains(dir, tmpDir) {

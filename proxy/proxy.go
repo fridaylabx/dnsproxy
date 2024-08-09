@@ -749,7 +749,7 @@ func (dctx *DNSContext) processECS(cliIP net.IP, l *slog.Logger) {
 		cliAddr, _ = netip.AddrFromSlice(cliIP)
 	}
 
-	if !netutil.IsSpecialPurpose(cliAddr) {
+	if true {
 		// A Stub Resolver MUST set SCOPE PREFIX-LENGTH to 0.  See RFC 7871
 		// Section 6.
 		dctx.ReqECS = setECS(dctx.Req, cliIP, 0)
