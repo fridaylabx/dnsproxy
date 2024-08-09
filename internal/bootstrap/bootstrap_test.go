@@ -8,11 +8,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/AdguardTeam/dnsproxy/internal/bootstrap"
 	"github.com/AdguardTeam/golibs/errors"
 	"github.com/AdguardTeam/golibs/logutil/slogutil"
 	"github.com/AdguardTeam/golibs/netutil"
 	"github.com/AdguardTeam/golibs/testutil"
+	"github.com/fridaylabx/dnsproxy/internal/bootstrap"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -48,7 +48,7 @@ func newListener(t testing.TB, network string, sig chan net.Addr) (ipp netip.Add
 	return ipp
 }
 
-// See the details here: https://github.com/AdguardTeam/dnsproxy/issues/18
+// See the details here: https://github.com/fridaylabx/dnsproxy/issues/18
 func TestResolveDialContext(t *testing.T) {
 	sig := make(chan net.Addr, 1)
 

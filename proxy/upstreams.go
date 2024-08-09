@@ -7,11 +7,11 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/AdguardTeam/dnsproxy/upstream"
 	"github.com/AdguardTeam/golibs/container"
 	"github.com/AdguardTeam/golibs/errors"
 	"github.com/AdguardTeam/golibs/mapsutil"
 	"github.com/AdguardTeam/golibs/netutil"
+	"github.com/fridaylabx/dnsproxy/upstream"
 )
 
 // UnqualifiedNames is a key for [UpstreamConfig.DomainReservedUpstreams] map to

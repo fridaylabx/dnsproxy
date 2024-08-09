@@ -17,16 +17,16 @@ import (
 	"syscall"
 	"time"
 
-	proxynetutil "github.com/AdguardTeam/dnsproxy/internal/netutil"
-	"github.com/AdguardTeam/dnsproxy/internal/version"
-	"github.com/AdguardTeam/dnsproxy/proxy"
-	"github.com/AdguardTeam/dnsproxy/upstream"
 	"github.com/AdguardTeam/golibs/errors"
 	"github.com/AdguardTeam/golibs/logutil/slogutil"
 	"github.com/AdguardTeam/golibs/netutil"
 	"github.com/AdguardTeam/golibs/osutil"
 	"github.com/AdguardTeam/golibs/timeutil"
 	"github.com/ameshkov/dnscrypt/v2"
+	proxynetutil "github.com/fridaylabx/dnsproxy/internal/netutil"
+	"github.com/fridaylabx/dnsproxy/internal/version"
+	"github.com/fridaylabx/dnsproxy/proxy"
+	"github.com/fridaylabx/dnsproxy/upstream"
 	goFlags "github.com/jessevdk/go-flags"
 	"github.com/miekg/dns"
 	"gopkg.in/yaml.v3"
@@ -276,7 +276,7 @@ func parseOptions() (opts *Options, exitCode int, err error) {
 	// TODO(e.burkov, a.garipov):  Use flag package and remove the manual
 	// options parsing.
 	//
-	// See https://github.com/AdguardTeam/dnsproxy/issues/182.
+	// See https://github.com/fridaylabx/dnsproxy/issues/182.
 	for _, arg := range os.Args {
 		if arg == argVersion {
 			fmt.Printf("dnsproxy version: %s\n", version.Version())

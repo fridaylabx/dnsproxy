@@ -13,9 +13,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/AdguardTeam/dnsproxy/internal/bootstrap"
 	"github.com/AdguardTeam/golibs/errors"
 	"github.com/AdguardTeam/golibs/logutil/slogutil"
+	"github.com/fridaylabx/dnsproxy/internal/bootstrap"
 	"github.com/miekg/dns"
 )
 
@@ -103,7 +103,7 @@ func (p *dnsOverTLS) Exchange(req *dns.Msg) (reply *dns.Msg, err error) {
 	reply, err = p.exchangeWithConn(conn, req)
 	if err != nil {
 		// The pooled connection might have been closed already, see
-		// https://github.com/AdguardTeam/dnsproxy/issues/3.  The following
+		// https://github.com/fridaylabx/dnsproxy/issues/3.  The following
 		// connection from pool may also be malformed, so dial a new one.
 
 		err = errors.WithDeferred(err, conn.Close())
