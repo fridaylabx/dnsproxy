@@ -215,58 +215,58 @@ const (
 )
 
 // main is the entry point.
-func main() {
-	opts, exitCode, err := parseOptions()
-	if err != nil {
-		_, _ = fmt.Fprintln(os.Stderr, err)
-	}
-
-	if opts == nil {
-		os.Exit(exitCode)
-	}
-
-	logOutput := os.Stdout
-	if opts.LogOutput != "" {
-		// #nosec G302 -- Trust the file path that is given in the
-		// configuration.
-		logOutput, err = os.OpenFile(opts.LogOutput, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o644)
-		if err != nil {
-			_, _ = fmt.Fprintln(os.Stderr, fmt.Errorf("cannot create a log file: %s", err))
-
-			os.Exit(osutil.ExitCodeArgumentError)
-		}
-
-		defer func() { _ = logOutput.Close() }()
-	}
-
-	l := slogutil.New(&slogutil.Config{
-		Output: logOutput,
-		Format: slogutil.FormatDefault,
-		// TODO(d.kolyshev): Consider making configurable.
-		AddTimestamp: true,
-		Verbose:      opts.Verbose,
-	})
-
-	ctx := context.Background()
-
-	if opts.Pprof {
-		runPprof(l)
-	}
-
-	err = runProxy(ctx, l, opts)
-	if err != nil {
-		l.ErrorContext(ctx, "running dnsproxy", slogutil.KeyError, err)
-
-		// As defers are skipped in case of os.Exit, close logOutput manually.
-		//
-		// TODO(a.garipov): Consider making logger.Close method.
-		if logOutput != os.Stdout {
-			_ = logOutput.Close()
-		}
-
-		os.Exit(osutil.ExitCodeFailure)
-	}
-}
+//func main() {
+//	opts, exitCode, err := parseOptions()
+//	if err != nil {
+//		_, _ = fmt.Fprintln(os.Stderr, err)
+//	}
+//
+//	if opts == nil {
+//		os.Exit(exitCode)
+//	}
+//
+//	logOutput := os.Stdout
+//	if opts.LogOutput != "" {
+//		// #nosec G302 -- Trust the file path that is given in the
+//		// configuration.
+//		logOutput, err = os.OpenFile(opts.LogOutput, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o644)
+//		if err != nil {
+//			_, _ = fmt.Fprintln(os.Stderr, fmt.Errorf("cannot create a log file: %s", err))
+//
+//			os.Exit(osutil.ExitCodeArgumentError)
+//		}
+//
+//		defer func() { _ = logOutput.Close() }()
+//	}
+//
+//	l := slogutil.New(&slogutil.Config{
+//		Output: logOutput,
+//		Format: slogutil.FormatDefault,
+//		// TODO(d.kolyshev): Consider making configurable.
+//		AddTimestamp: true,
+//		Verbose:      opts.Verbose,
+//	})
+//
+//	ctx := context.Background()
+//
+//	if opts.Pprof {
+//		runPprof(l)
+//	}
+//
+//	err = runProxy(ctx, l, opts)
+//	if err != nil {
+//		l.ErrorContext(ctx, "running dnsproxy", slogutil.KeyError, err)
+//
+//		// As defers are skipped in case of os.Exit, close logOutput manually.
+//		//
+//		// TODO(a.garipov): Consider making logger.Close method.
+//		if logOutput != os.Stdout {
+//			_ = logOutput.Close()
+//		}
+//
+//		os.Exit(osutil.ExitCodeFailure)
+//	}
+//}
 
 // parseOptions returns options parsed from the command args or config file.
 // If no options have been parsed returns a suitable exit code and an error.

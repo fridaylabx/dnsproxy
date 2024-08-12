@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"github.com/AdguardTeam/golibs/logutil/slogutil"
 	"github.com/fridaylabx/dnsproxy/proxy"
@@ -15,56 +14,6 @@ import (
 	"runtime"
 	"strings"
 )
-
-var (
-	serviceParam string
-	confFile     string
-)
-
-const configName = "proxy.yaml"
-
-func init() {
-	flag.StringVar(&serviceParam, "service", "", "control the system service.")
-	flag.StringVar(&confFile, "conf", configName, "define the config file path.")
-}
-
-func main() {
-	flag.Parse()
-
-	// 获取安装路径
-	installationPath := GetCurrentAbPath()
-
-	serviceConfig := &service.Config{
-		Name:        "Windows-DNS-Proxy-Service",
-		DisplayName: "Windows DNS Proxy Service",
-		Description: "The Windows DNS Proxy Service is a DNS proxy service that supports protocols such as TCP, UDP, HTTPDNS, DoT, and DoH",
-		Option: map[string]interface{}{
-			// 开机自启动
-			"DelayedAutoStart": true,
-		},
-		// 设置配置文件路径
-		Arguments: []string{"-conf", filepath.Join(installationPath, configName)},
-	}
-	dnsProxyService, err := NewDNSProxyService(confFile)
-	if err != nil {
-		panic(fmt.Errorf("new dns proxy service error [%s]", err.Error()))
-	}
-	s, err := service.New(dnsProxyService, serviceConfig)
-	if err != nil {
-		panic(fmt.Errorf("create service error [%s]", err.Error()))
-	}
-
-	if serviceParam != "" {
-		if err := service.Control(s, serviceParam); err != nil {
-			panic(err)
-		}
-		return
-	}
-
-	if err := s.Run(); err != nil {
-		panic(err)
-	}
-}
 
 type DNSProxyService struct {
 	options  *Options
