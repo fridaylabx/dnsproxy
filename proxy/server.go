@@ -6,6 +6,8 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/AdguardTeam/golibs/errors"
@@ -94,7 +96,8 @@ func (p *Proxy) startListeners() {
 // d is left without a response as the documentation to [BeforeRequestHandler]
 // says, and if it's ratelimited.
 func (p *Proxy) handleDNSRequest(d *DNSContext) (err error) {
-	p.logDNSMessage(d.Req)
+	// p.logDNSMessage(d.Req)
+	startTime := time.Now()
 
 	if d.Req.Response {
 		p.logger.Debug("dropping incoming response packet", "addr", d.Addr)
@@ -119,7 +122,7 @@ func (p *Proxy) handleDNSRequest(d *DNSContext) (err error) {
 		// Don't reply to ratelimited clients.
 		return nil
 	}
-
+	fields := strings.Split(d.PreAddr.String(), ":")
 	d.Res = p.validateRequest(d)
 	if d.Res == nil {
 		if p.RequestHandler != nil {
@@ -129,7 +132,7 @@ func (p *Proxy) handleDNSRequest(d *DNSContext) (err error) {
 		}
 	}
 
-	p.logDNSMessage(d.Res)
+	p.logDNSMessage(d.Res, time.Since(startTime), strings.ToUpper(string(d.Proto)), fields[0], fields[1], d.ReqECS, d.hit)
 	p.respond(d)
 
 	return err
@@ -244,19 +247,27 @@ func (p *Proxy) setMinMaxTTL(r *dns.Msg) {
 }
 
 // logDNSMessage logs the given DNS message.
-func (p *Proxy) logDNSMessage(m *dns.Msg) {
-	if m == nil {
+func (p *Proxy) logDNSMessage(m *dns.Msg, cost time.Duration, proto, sourceIP, sourcePort string, ecsIPNet *net.IPNet, hitCache bool) {
+	if m == nil || !p.QueryLogConfig.Enable {
 		return
 	}
 
-	var msg string
-	if m.Response {
-		msg = "out"
-	} else {
-		msg = "in"
+	ecs := ""
+	if ecsIPNet != nil {
+		ecs = ecsIPNet.String()
 	}
-
-	slogutil.PrintLines(context.TODO(), p.logger, slog.LevelDebug, msg, m.String())
+	if m.Response {
+		p.QueryLogChan <- &QueryLog{
+			Msg:        m,
+			SourceIP:   formatIPV6(sourceIP),
+			SourcePort: sourcePort,
+			Cost:       cost,
+			Hit:        hitCache,
+			ECS:        ecs,
+			Proto:      proto,
+		}
+	}
+	// slogutil.PrintLines(context.TODO(), p.logger, slog.LevelDebug, msg, m.String())
 }
 
 // logWithNonCrit logs the error on the appropriate level depending on whether
@@ -278,5 +289,15 @@ func logWithNonCrit(err error, msg string, proto Proto, l *slog.Logger) {
 		)
 	} else {
 		l.Error(msg, "proto", proto, slogutil.KeyError, err)
+	}
+}
+
+func formatIPV6(ip string) string {
+	re := regexp.MustCompile(`\[(.*?)\]`)
+	matches := re.FindStringSubmatch(ip)
+	if len(matches) > 1 {
+		return matches[1]
+	} else {
+		return ip
 	}
 }

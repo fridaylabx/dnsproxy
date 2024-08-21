@@ -6,6 +6,7 @@ import (
 	"github.com/AdguardTeam/golibs/logutil/slogutil"
 	"github.com/fridaylabx/dnsproxy/proxy"
 	"github.com/kardianos/service"
+	"gopkg.in/natefinch/lumberjack.v2"
 	"log"
 	"log/slog"
 	"os"
@@ -36,18 +37,20 @@ func NewDNSProxyService(confFile string) (*DNSProxyService, error) {
 
 	// 设置log
 	logOutput := os.Stdout
-	if opts.LogOutput != "" {
-		logOutput, err = os.OpenFile(opts.LogOutput, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
-		if err != nil {
-			return nil, fmt.Errorf("cannot create a log file: %s", err)
-		}
-	}
 	l := slogutil.New(&slogutil.Config{
 		Output:       logOutput,
 		Format:       slogutil.FormatDefault,
 		AddTimestamp: true,
 		Verbose:      opts.Verbose,
 	})
+
+	if opts.LogOutput != "" {
+		log.SetOutput(&lumberjack.Logger{
+			Filename:   opts.LogOutput,
+			MaxSize:    30,
+			MaxBackups: 5,
+		})
+	}
 
 	return &DNSProxyService{
 		options: opts,
@@ -58,7 +61,7 @@ func NewDNSProxyService(confFile string) (*DNSProxyService, error) {
 
 func (s *DNSProxyService) Start(service service.Service) error {
 	// Prepare the proxy server and its configuration.
-	conf, err := createProxyConfig(s.ctx, s.log, s.options)
+	conf, err := CreateProxyConfig(s.ctx, s.log, s.options)
 	if err != nil {
 		return fmt.Errorf("configuring proxy: %w", err)
 	}
@@ -67,15 +70,16 @@ func (s *DNSProxyService) Start(service service.Service) error {
 	if err != nil {
 		return fmt.Errorf("creating proxy: %w", err)
 	}
+	dnsProxy.QueryLogChan = make(chan *proxy.QueryLog, 100000)
 	s.dnsProxy = dnsProxy
 
 	// Add extra handler if needed.
 	if s.options.IPv6Disabled {
-		ipv6Config := ipv6Configuration{
-			logger:       s.log,
-			ipv6Disabled: s.options.IPv6Disabled,
+		ipv6Config := Ipv6Configuration{
+			Logger:       s.log,
+			Ipv6Disabled: s.options.IPv6Disabled,
 		}
-		dnsProxy.RequestHandler = ipv6Config.handleDNSRequest
+		dnsProxy.RequestHandler = ipv6Config.HandleDNSRequest
 	}
 
 	// Start the proxy server.

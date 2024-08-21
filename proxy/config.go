@@ -245,6 +245,13 @@ type Config struct {
 	// PreferIPv6 tells the proxy to prefer IPv6 addresses when bootstrapping
 	// upstreams that use hostnames.
 	PreferIPv6 bool
+
+	QueryLogConfig QueryLogConfig
+}
+
+type QueryLogConfig struct {
+	Enable bool
+	Path   string
 }
 
 // validateConfig verifies that the supplied configuration is valid and returns

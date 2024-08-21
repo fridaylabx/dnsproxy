@@ -19,7 +19,11 @@ require (
 	gopkg.in/yaml.v3 v3.0.1
 )
 
-require github.com/kardianos/service v1.2.2 // indirect
+require (
+	github.com/kardianos/service v1.2.2 // indirect
+	github.com/sirupsen/logrus v1.9.3 // indirect
+	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
+)
 
 require (
 	github.com/aead/chacha20 v0.0.0-20180709150244-8b13a72661da // indirect

@@ -76,7 +76,7 @@ func (p *Proxy) handleBefore(d *DNSContext) (cont bool) {
 	if befReqErr := (&BeforeRequestError{}); errors.As(err, &befReqErr) {
 		d.Res = befReqErr.Response
 
-		p.logDNSMessage(d.Res)
+		//p.logDNSMessage(d.Res)
 		p.respond(d)
 	}
 

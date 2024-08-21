@@ -205,6 +205,10 @@ type Options struct {
 	// lookups of private addresses, including the requests for authority
 	// records, such as SOA and NS.
 	UsePrivateRDNS bool `yaml:"use-private-rdns" long:"use-private-rdns" description:"If specified, use private upstreams for reverse DNS lookups of private addresses" optional:"yes" optional-value:"true"`
+
+	QueryLog bool `yaml:"query-log"  long:"query-log" description:"Query log output (optional)" optional:"yes" optional-value:"true"`
+	// DNSLogPath is the path to the dns log file. If not set, write LogOutput.
+	QueryLogPath string `yaml:"query-log-path"  long:"query-log-path" description:"Path to the query log file. If not set, write log output."`
 }
 
 const (
@@ -214,9 +218,9 @@ const (
 	argVersion    = "--version"
 )
 
-// parseOptions returns options parsed from the command args or config file.
+// ParseOptions returns options parsed from the command args or config file.
 // If no options have been parsed returns a suitable exit code and an error.
-func parseOptions() (opts *Options, exitCode int, err error) {
+func ParseOptions() (opts *Options, exitCode int, err error) {
 	opts = &Options{}
 
 	// TODO(e.burkov, a.garipov):  Use flag package and remove the manual
@@ -230,7 +234,7 @@ func parseOptions() (opts *Options, exitCode int, err error) {
 			return nil, osutil.ExitCodeSuccess, nil
 		} else if strings.HasPrefix(arg, argConfigPath) {
 			confPath := strings.TrimPrefix(arg, argConfigPath)
-			fmt.Printf("dnsproxy config path: %s\n", confPath)
+			//fmt.Printf("dnsproxy config path: %s\n", confPath)
 
 			err = parseConfigFile(opts, confPath)
 			if err != nil {
@@ -273,26 +277,10 @@ func parseConfigFile(options *Options, confPath string) (err error) {
 	return nil
 }
 
-// runProxy starts and runs the proxy.  l must not be nil.
-func runProxy(ctx context.Context, l *slog.Logger, options *Options) (err error) {
-	var (
-		buildVersion = version.Version()
-		revision     = version.Revision()
-		branch       = version.Branch()
-		commitTime   = version.CommitTime()
-	)
-
-	l.InfoContext(
-		ctx,
-		"dnsproxy starting",
-		"version", buildVersion,
-		"revision", revision,
-		"branch", branch,
-		"commit_time", commitTime,
-	)
-
+// RunProxy starts and runs the proxy.  l must not be nil.
+func RunProxy(ctx context.Context, l *slog.Logger, options *Options) (err error) {
 	// Prepare the proxy server and its configuration.
-	conf, err := createProxyConfig(ctx, l, options)
+	conf, err := CreateProxyConfig(ctx, l, options)
 	if err != nil {
 		return fmt.Errorf("configuring proxy: %w", err)
 	}
@@ -301,14 +289,14 @@ func runProxy(ctx context.Context, l *slog.Logger, options *Options) (err error)
 	if err != nil {
 		return fmt.Errorf("creating proxy: %w", err)
 	}
-
+	dnsProxy.QueryLogChan = make(chan *proxy.QueryLog, 100000)
 	// Add extra handler if needed.
 	if options.IPv6Disabled {
-		ipv6Config := ipv6Configuration{
-			logger:       l,
-			ipv6Disabled: options.IPv6Disabled,
+		ipv6Config := Ipv6Configuration{
+			Logger:       l,
+			Ipv6Disabled: options.IPv6Disabled,
 		}
-		dnsProxy.RequestHandler = ipv6Config.handleDNSRequest
+		dnsProxy.RequestHandler = ipv6Config.HandleDNSRequest
 	}
 
 	// Start the proxy server.
@@ -331,8 +319,8 @@ func runProxy(ctx context.Context, l *slog.Logger, options *Options) (err error)
 	return nil
 }
 
-// runPprof runs pprof server on localhost:6060.
-func runPprof(l *slog.Logger) {
+// RunPprof runs pprof server on localhost:6060.
+func RunPprof(l *slog.Logger) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/debug/pprof/", pprof.Index)
 	mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
@@ -365,7 +353,7 @@ func runPprof(l *slog.Logger) {
 }
 
 // createProxyConfig initializes [proxy.Config].  l must not be nil.
-func createProxyConfig(
+func CreateProxyConfig(
 	ctx context.Context,
 	l *slog.Logger,
 	options *Options,
@@ -397,8 +385,11 @@ func createProxyConfig(
 		MaxGoroutines:          options.MaxGoRoutines,
 		UsePrivateRDNS:         options.UsePrivateRDNS,
 		PrivateSubnets:         netutil.SubnetSetFunc(netutil.IsLocallyServed),
+		QueryLogConfig: proxy.QueryLogConfig{
+			Enable: options.QueryLog,
+			Path:   options.QueryLogPath,
+		},
 	}
-
 	if uiStr := options.HTTPSUserinfo; uiStr != "" {
 		user, pass, ok := strings.Cut(uiStr, ":")
 		if ok {
@@ -408,15 +399,15 @@ func createProxyConfig(
 		}
 	}
 
-	options.initBogusNXDomain(ctx, l, conf)
+	options.InitBogusNXDomain(ctx, l, conf)
 
 	var errs []error
-	errs = append(errs, options.initUpstreams(ctx, l, conf))
-	errs = append(errs, options.initEDNS(ctx, l, conf))
-	errs = append(errs, options.initTLSConfig(conf))
-	errs = append(errs, options.initDNSCryptConfig(conf))
-	errs = append(errs, options.initListenAddrs(conf))
-	errs = append(errs, options.initSubnets(conf))
+	errs = append(errs, options.InitUpstreams(ctx, l, conf))
+	errs = append(errs, options.InitEDNS(ctx, l, conf))
+	errs = append(errs, options.InitTLSConfig(conf))
+	errs = append(errs, options.InitDNSCryptConfig(conf))
+	errs = append(errs, options.InitListenAddrs(conf))
+	errs = append(errs, options.InitSubnets(conf))
 
 	return conf, errors.Join(errs...)
 }
@@ -432,10 +423,10 @@ func isEmpty(uc *proxy.UpstreamConfig) (ok bool) {
 		len(uc.SpecifiedDomainUpstreams) == 0
 }
 
-// initUpstreams inits upstream-related config fields.
+// InitUpstreams inits upstream-related config fields.
 //
 // TODO(d.kolyshev): Join errors.
-func (opts *Options) initUpstreams(
+func (opts *Options) InitUpstreams(
 	ctx context.Context,
 	l *slog.Logger,
 	config *proxy.Config,
@@ -554,8 +545,8 @@ func initBootstrap(
 	}
 }
 
-// initEDNS inits EDNS-related config fields.
-func (opts *Options) initEDNS(
+// InitEDNS inits EDNS-related config fields.
+func (opts *Options) InitEDNS(
 	ctx context.Context,
 	l *slog.Logger,
 	config *proxy.Config,
@@ -578,8 +569,8 @@ func (opts *Options) initEDNS(
 	return nil
 }
 
-// initBogusNXDomain inits BogusNXDomain structure.
-func (opts *Options) initBogusNXDomain(ctx context.Context, l *slog.Logger, config *proxy.Config) {
+// InitBogusNXDomain inits BogusNXDomain structure.
+func (opts *Options) InitBogusNXDomain(ctx context.Context, l *slog.Logger, config *proxy.Config) {
 	if len(opts.BogusNXDomain) == 0 {
 		return
 	}
@@ -595,8 +586,8 @@ func (opts *Options) initBogusNXDomain(ctx context.Context, l *slog.Logger, conf
 	}
 }
 
-// initTLSConfig inits the TLS config.
-func (opts *Options) initTLSConfig(config *proxy.Config) (err error) {
+// InitTLSConfig inits the TLS config.
+func (opts *Options) InitTLSConfig(config *proxy.Config) (err error) {
 	if opts.TLSCertPath != "" && opts.TLSKeyPath != "" {
 		var tlsConfig *tls.Config
 		tlsConfig, err = newTLSConfig(opts)
@@ -610,8 +601,8 @@ func (opts *Options) initTLSConfig(config *proxy.Config) (err error) {
 	return nil
 }
 
-// initDNSCryptConfig inits the DNSCrypt config.
-func (opts *Options) initDNSCryptConfig(config *proxy.Config) (err error) {
+// InitDNSCryptConfig inits the DNSCrypt config.
+func (opts *Options) InitDNSCryptConfig(config *proxy.Config) (err error) {
 	if opts.DNSCryptConfigPath == "" {
 		return
 	}
@@ -638,8 +629,8 @@ func (opts *Options) initDNSCryptConfig(config *proxy.Config) (err error) {
 	return nil
 }
 
-// initListenAddrs sets up proxy configuration listen IP addresses.
-func (opts *Options) initListenAddrs(config *proxy.Config) (err error) {
+// InitListenAddrs sets up proxy configuration listen IP addresses.
+func (opts *Options) InitListenAddrs(config *proxy.Config) (err error) {
 	addrs, err := parseListenAddrs(opts)
 	if err != nil {
 		return fmt.Errorf("parsing listen addresses: %w", err)
@@ -648,7 +639,7 @@ func (opts *Options) initListenAddrs(config *proxy.Config) (err error) {
 	if len(opts.ListenPorts) == 0 {
 		// If ListenPorts has not been parsed through config file nor command
 		// line we set it to 53.
-		opts.ListenPorts = []int{53}
+		//opts.ListenPorts = []int{53}
 	}
 
 	for _, port := range opts.ListenPorts {
@@ -777,10 +768,10 @@ func parseListenAddrs(options *Options) (addrs []netip.Addr, err error) {
 	return addrs, nil
 }
 
-// initSubnets sets the DNS64 configuration into conf.
+// InitSubnets sets the DNS64 configuration into conf.
 //
 // TODO(d.kolyshev): Join errors.
-func (opts *Options) initSubnets(conf *proxy.Config) (err error) {
+func (opts *Options) InitSubnets(conf *proxy.Config) (err error) {
 	if conf.UseDNS64 = opts.DNS64; conf.UseDNS64 {
 		for i, p := range opts.DNS64Prefix {
 			var pref netip.Prefix
@@ -797,11 +788,11 @@ func (opts *Options) initSubnets(conf *proxy.Config) (err error) {
 		return nil
 	}
 
-	return opts.initPrivateSubnets(conf)
+	return opts.InitPrivateSubnets(conf)
 }
 
-// initSubnets sets the private subnets configuration into conf.
-func (opts *Options) initPrivateSubnets(conf *proxy.Config) (err error) {
+// InitSubnets sets the private subnets configuration into conf.
+func (opts *Options) InitPrivateSubnets(conf *proxy.Config) (err error) {
 	private := make([]netip.Prefix, 0, len(opts.PrivateSubnets))
 	for i, p := range opts.PrivateSubnets {
 		var pref netip.Prefix
@@ -820,20 +811,20 @@ func (opts *Options) initPrivateSubnets(conf *proxy.Config) (err error) {
 	return nil
 }
 
-// ipv6Configuration represents IPv6 configuration.
-type ipv6Configuration struct {
-	// logger is used for logging during requests handling.  It is never nil.
-	logger *slog.Logger
+// Ipv6Configuration represents IPv6 configuration.
+type Ipv6Configuration struct {
+	// Logger is used for logging during requests handling.  It is never nil.
+	Logger *slog.Logger
 
-	// ipv6Disabled set all AAAA requests to be replied with NoError RCode and
+	// Ipv6Disabled set all AAAA requests to be replied with NoError RCode and
 	// an empty answer.
-	ipv6Disabled bool
+	Ipv6Disabled bool
 }
 
-// handleDNSRequest checks the IPv6 configuration for current session before
+// HandleDNSRequest checks the IPv6 configuration for current session before
 // resolving.
-func (c *ipv6Configuration) handleDNSRequest(p *proxy.Proxy, ctx *proxy.DNSContext) (err error) {
-	if !c.isIPv6Enabled(ctx, !c.ipv6Disabled) {
+func (c *Ipv6Configuration) HandleDNSRequest(p *proxy.Proxy, ctx *proxy.DNSContext) (err error) {
+	if !c.isIPv6Enabled(ctx, !c.Ipv6Disabled) {
 		return nil
 	}
 
@@ -845,9 +836,9 @@ const retryNoError = 60
 
 // isIPv6Enabled checks if AAAA requests should be enabled or not and sets
 // NoError empty response to the given DNSContext if needed.
-func (c *ipv6Configuration) isIPv6Enabled(ctx *proxy.DNSContext, ipv6Enabled bool) (enabled bool) {
+func (c *Ipv6Configuration) isIPv6Enabled(ctx *proxy.DNSContext, ipv6Enabled bool) (enabled bool) {
 	if !ipv6Enabled && ctx.Req.Question[0].Qtype == dns.TypeAAAA {
-		c.logger.Debug(
+		c.Logger.Debug(
 			"ipv6 is disabled; replying with empty response",
 			"req", ctx.Req.Question[0].Name,
 		)

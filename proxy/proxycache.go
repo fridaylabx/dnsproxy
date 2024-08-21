@@ -40,6 +40,7 @@ func (p *Proxy) replyFromCache(d *DNSContext) (hit bool) {
 	}
 
 	d.Res = ci.m
+	d.hit = hit
 	d.CachedUpstreamAddr = ci.u
 
 	p.logger.Debug(

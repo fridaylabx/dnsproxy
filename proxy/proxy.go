@@ -6,6 +6,7 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+	"github.com/sirupsen/logrus"
 	"io"
 	"log/slog"
 	"net"
@@ -96,6 +97,8 @@ type Proxy struct {
 
 	// logger is used for logging in the proxy service.  It is never nil.
 	logger *slog.Logger
+	// logger is used for logging in the proxy service.  It is never nil.
+	queryLogger *logrus.Logger
 
 	// ratelimitBuckets is a storage for ratelimiters for individual IPs.
 	ratelimitBuckets *gocache.Cache
@@ -201,6 +204,8 @@ type Proxy struct {
 
 	// started indicates if the proxy has been started.
 	started bool
+
+	QueryLogChan chan *QueryLog
 }
 
 // New creates a new Proxy with the specified configuration.  c must not be nil.
@@ -243,6 +248,8 @@ func New(c *Config) (p *Proxy, err error) {
 	} else {
 		p.logger = slog.Default().With(slogutil.KeyPrefix, LogPrefix)
 	}
+
+	p.queryLogger = SetQueryLogInfo(c.QueryLogConfig.Enable, c.QueryLogConfig.Path)
 
 	// TODO(e.burkov):  Validate config separately and add the contract to the
 	// New function.
@@ -336,6 +343,7 @@ func (p *Proxy) Start(ctx context.Context) (err error) {
 	}
 
 	p.startListeners()
+	p.handleQueryLog()
 	p.started = true
 
 	return nil
@@ -671,6 +679,7 @@ func (p *Proxy) Resolve(dctx *DNSContext) (err error) {
 
 	var ok bool
 	ok, err = p.replyFromUpstream(dctx)
+	dctx.hit = false
 
 	// Don't cache the responses having CD flag, just like Dnsmasq does.  It
 	// prevents the cache from being poisoned with unvalidated answers which may
@@ -756,4 +765,28 @@ func (dctx *DNSContext) processECS(cliIP net.IP, l *slog.Logger) {
 
 		l.Debug("setting ecs", "subnet", dctx.ReqECS)
 	}
+}
+
+func (p *Proxy) handleQueryLog() {
+	if p.started {
+		return
+	}
+	go func() {
+		ticker := time.NewTicker(time.Second / 2)
+		for {
+			select {
+			case <-ticker.C:
+				remainingCapacity := cap(p.QueryLogChan) - len(p.QueryLogChan)
+				if remainingCapacity < 1000 {
+					for i := 100000; i > remainingCapacity; i-- {
+						<-p.QueryLogChan
+					}
+				}
+			case msg := <-p.QueryLogChan:
+				if p.QueryLogConfig.Enable {
+					p.queryLogger.Info(FormatQueryLog(msg))
+				}
+			}
+		}
+	}()
 }
