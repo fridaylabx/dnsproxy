@@ -18,3 +18,5 @@ example.key
 coverage.txt
 config.yaml
 *.log
+server.crt
+server.key

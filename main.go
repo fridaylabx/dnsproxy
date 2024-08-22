@@ -1,7 +1,18 @@
 // Package main is responsible for command-line interface of dnsproxy.
 package main
 
-// main is the entry point.
+//import (
+//	"fmt"
+//	"github.com/AdguardTeam/golibs/log"
+//	"github.com/AdguardTeam/golibs/logutil/slogutil"
+//	"github.com/AdguardTeam/golibs/osutil"
+//	"github.com/fridaylabx/dnsproxy/sv"
+//	"golang.org/x/net/context"
+//	"gopkg.in/natefinch/lumberjack.v2"
+//	"os"
+//)
+//
+//// main is the entry point.
 //func main() {
 //	opts, exitCode, err := sv.ParseOptions()
 //	if err != nil {

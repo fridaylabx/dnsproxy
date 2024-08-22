@@ -261,7 +261,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	proto := ProtoHTTP
-	if strings.ToLower(r.URL.Scheme) == "https" {
+	if r.TLS != nil {
 		proto = ProtoHTTPS
 	}
 	d := p.newDNSContext(proto, req, raddr)
