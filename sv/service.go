@@ -24,7 +24,6 @@ type DNSProxyService struct {
 }
 
 func NewDNSProxyService(confFile string) (*DNSProxyService, error) {
-	// 读取配置
 	opts := &Options{}
 	err := parseConfigFile(opts, confFile)
 	if err != nil {

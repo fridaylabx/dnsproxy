@@ -2,8 +2,10 @@
 package sv
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
+	"encoding/base64"
 	"fmt"
 	"log/slog"
 	"net"
@@ -12,7 +14,9 @@ import (
 	"net/netip"
 	"net/url"
 	"os"
+	"os/exec"
 	"os/signal"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -263,10 +267,25 @@ func ParseOptions() (opts *Options, exitCode int, err error) {
 // parseConfigFile fills options with the settings from file read by the given
 // path.
 func parseConfigFile(options *Options, confPath string) (err error) {
+	var b []byte
 	// #nosec G304 -- Trust the file path that is given in the args.
-	b, err := os.ReadFile(confPath)
-	if err != nil {
-		return fmt.Errorf("reading file: %w", err)
+	if confPath == "" && runtime.GOOS == "windows" {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		var data string
+		data, err = powershellExec(ctx, "[Environment]::GetEnvironmentVariable('WDNS_PROXY_CONF', 'User')")
+		if err != nil {
+			return fmt.Errorf("reading file: %w", err)
+		}
+		b, err = base64.StdEncoding.DecodeString(data)
+		if err != nil {
+			return fmt.Errorf("reading file: %w", err)
+		}
+	} else {
+		b, err = os.ReadFile(confPath)
+		if err != nil {
+			return fmt.Errorf("reading file: %w", err)
+		}
 	}
 
 	err = yaml.Unmarshal(b, options)
@@ -275,6 +294,30 @@ func parseConfigFile(options *Options, confPath string) (err error) {
 	}
 
 	return nil
+}
+
+func powershellExec(ctx context.Context, command string) (string, error) {
+	var (
+		stdout bytes.Buffer
+		stderr bytes.Buffer
+		cmd    *exec.Cmd
+	)
+
+	cmd = exec.CommandContext(ctx, "powershell.exe", command)
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	err := cmd.Run()
+
+	if err != nil {
+		return "", errors.New(stderr.String() + "\n" + err.Error())
+	}
+
+	if stderr.String() != "" {
+		return "", errors.New(stderr.String())
+	}
+
+	return stdout.String(), nil
 }
 
 // RunProxy starts and runs the proxy.  l must not be nil.
