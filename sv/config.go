@@ -28,7 +28,6 @@ import (
 	"github.com/AdguardTeam/golibs/timeutil"
 	"github.com/ameshkov/dnscrypt/v2"
 	proxynetutil "github.com/fridaylabx/dnsproxy/internal/netutil"
-	"github.com/fridaylabx/dnsproxy/internal/version"
 	"github.com/fridaylabx/dnsproxy/proxy"
 	"github.com/fridaylabx/dnsproxy/upstream"
 	goFlags "github.com/jessevdk/go-flags"
@@ -232,14 +231,8 @@ func ParseOptions() (opts *Options, exitCode int, err error) {
 	//
 	// See https://github.com/fridaylabx/dnsproxy/issues/182.
 	for _, arg := range os.Args {
-		if arg == argVersion {
-			fmt.Printf("dnsproxy version: %s\n", version.Version())
-
-			return nil, osutil.ExitCodeSuccess, nil
-		} else if strings.HasPrefix(arg, argConfigPath) {
+		if strings.HasPrefix(arg, argConfigPath) {
 			confPath := strings.TrimPrefix(arg, argConfigPath)
-			//fmt.Printf("dnsproxy config path: %s\n", confPath)
-
 			err = parseConfigFile(opts, confPath)
 			if err != nil {
 				return nil, osutil.ExitCodeFailure, fmt.Errorf(
