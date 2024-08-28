@@ -171,9 +171,6 @@ type Options struct {
 	// localhost:6060 or not.
 	Pprof bool `yaml:"pprof" long:"pprof" description:"If present, exposes pprof information on localhost:6060." optional:"yes" optional-value:"true"`
 
-	// Version, if true, prints the program version, and exits.
-	Version bool `yaml:"version" long:"version" description:"Prints the program version"`
-
 	// Verbose controls the verbosity of the output.
 	Verbose bool `yaml:"verbose" short:"v" long:"verbose" description:"Verbose output (optional)" optional:"yes" optional-value:"true"`
 
@@ -266,7 +263,7 @@ func parseConfigFile(options *Options, confPath string) (err error) {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		var data string
-		data, err = powershellExec(ctx, "[Environment]::GetEnvironmentVariable('WDNS_PROXY_CONF', 'User')")
+		data, err = powershellExec(ctx, "[Environment]::GetEnvironmentVariable('WDNS_PROXY_CONF', 'Machine')")
 		if err != nil {
 			return fmt.Errorf("reading file: %w", err)
 		}

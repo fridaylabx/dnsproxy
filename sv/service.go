@@ -34,6 +34,21 @@ func NewDNSProxyService(confFile string) (*DNSProxyService, error) {
 		)
 	}
 
+	if runtime.GOOS == "windows" {
+		if opts.LogOutput != "" {
+			opts.LogOutput = filepath.Join(GetCurrentAbPath(), opts.LogOutput)
+		}
+		if opts.TLSKeyPath != "" {
+			opts.TLSKeyPath = filepath.Join(GetCurrentAbPath(), opts.TLSKeyPath)
+		}
+		if opts.TLSCertPath != "" {
+			opts.TLSCertPath = filepath.Join(GetCurrentAbPath(), opts.TLSCertPath)
+		}
+		if opts.QueryLog && opts.QueryLogPath != "" {
+			opts.QueryLogPath = filepath.Join(GetCurrentAbPath(), opts.QueryLogPath)
+		}
+	}
+
 	// 设置log
 	logOutput := os.Stdout
 	l := slogutil.New(&slogutil.Config{
